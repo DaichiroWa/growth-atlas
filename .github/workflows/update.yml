@@ -13,8 +13,8 @@ permissions:
   id-token: write
 
 concurrency:
-  group: pages
-  cancel-in-progress: false
+  group: atlas-update
+  cancel-in-progress: true
 
 jobs:
   build-deploy:
@@ -38,6 +38,7 @@ jobs:
           git config user.email "actions@github.com"
           git add dist/atlas_bundle.json
           git diff --cached --quiet || git commit -m "chore: daily bundle update"
+          git pull --rebase origin main
           git push
 
       - name: Upload Pages artifact
