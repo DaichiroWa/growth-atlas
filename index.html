@@ -1,0 +1,507 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<title>GROWTH ATLAS — 実データ</title>
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css" />
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;700&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --bg-deep:#0a0e1a; --bg-panel:rgba(14,20,36,0.88); --line:rgba(255,255,255,0.08);
+    --ink:#e7ecf5; --ink-dim:#8892a8;
+    --growth:#4ECDC4; --decline:#ff5d8f; --neutral:#ffc857; --sleep:#8f9fd4;
+    --mono:'IBM Plex Mono', monospace; --disp:'Space Grotesk', sans-serif;
+  }
+  *{box-sizing:border-box;}
+  html,body{margin:0;height:100%;background:var(--bg-deep);color:var(--ink);font-family:var(--disp);overflow:hidden;}
+  #app{position:relative;width:100vw;height:100vh;height:100dvh;}
+  #map{position:absolute;inset:0;background:var(--bg-deep);}
+  .leaflet-tile-pane{filter:brightness(0.75) contrast(1.05);}
+  .leaflet-control-attribution{background:rgba(10,14,26,0.6)!important;color:var(--ink-dim)!important;font-size:9px!important;}
+  .leaflet-control-attribution a{color:var(--ink-dim)!important;}
+
+  #garden{position:absolute;inset:0;display:none;overflow:hidden;
+    background:linear-gradient(180deg,#0d1226 0%,#16204a 42%,#1d2f5e 58%,#0f2e30 60%,#123a33 100%);}
+  #garden.active{display:block;}
+  #garden-sky{position:absolute;inset:0;pointer-events:none;}
+  .star{position:absolute;width:2px;height:2px;border-radius:50%;background:#fff;opacity:0.5;animation:twinkle 3s ease-in-out infinite;}
+  @keyframes twinkle{0%,100%{opacity:0.2;}50%{opacity:0.75;}}
+  #garden-ground{position:absolute;left:0;right:0;bottom:0;height:42%;
+    background:linear-gradient(180deg,#194b3f 0%,#123a33 30%,#0d2b27 100%);border-top:1px solid rgba(120,255,220,0.14);}
+  .grass{position:absolute;bottom:0;width:3px;background:linear-gradient(180deg,rgba(120,230,190,0.35),transparent);border-radius:2px 2px 0 0;}
+  #garden-title{position:absolute;top:86px;left:50%;transform:translateX(-50%);text-align:center;pointer-events:none;width:100%;}
+  #garden-title h2{margin:0;font-size:15px;font-weight:500;letter-spacing:0.24em;font-family:var(--mono);}
+  #garden-title p{margin:6px 0 0;font-size:11px;color:var(--ink-dim);}
+  #garden-pens{position:absolute;left:0;right:0;bottom:6%;height:52%;display:flex;align-items:flex-end;justify-content:center;gap:3vw;padding:0 5vw;flex-wrap:wrap;overflow-y:auto;}
+  .pen{position:relative;display:flex;flex-direction:column;align-items:center;justify-content:flex-end;width:200px;height:100%;cursor:pointer;}
+  .pen .creature-holder{position:relative;display:flex;align-items:flex-end;justify-content:center;height:78%;}
+  .pen .nameplate{margin-top:10px;font-family:var(--mono);font-size:11px;letter-spacing:0.1em;color:var(--ink-dim);
+    background:rgba(10,14,26,0.55);border:1px solid var(--line);padding:5px 12px;border-radius:20px;display:flex;align-items:center;gap:8px;}
+  .nameplate .mood-dot{width:7px;height:7px;border-radius:50%;}
+  .pen .speech{position:absolute;top:-4px;left:50%;transform:translateX(-50%);font-size:11px;color:var(--ink);
+    background:rgba(20,28,52,0.92);border:1px solid var(--line);padding:6px 12px;border-radius:14px;white-space:nowrap;opacity:0;transition:opacity 0.4s;pointer-events:none;}
+  .pen .speech.show{opacity:1;}
+  #garden-empty{position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);text-align:center;color:var(--ink-dim);font-size:13px;line-height:2;display:none;width:90%;}
+  #garden-empty.show{display:block;}
+
+  .creature{transform-origin:50% 100%;}
+  .anim-healthy .creature{animation:bounce 2.4s ease-in-out infinite;}
+  .anim-excited .creature{animation:hop 0.55s ease-in-out infinite;}
+  .anim-sick .creature{animation:droop 4s ease-in-out infinite;filter:saturate(0.55) brightness(0.85);}
+  .anim-sleeping .creature{animation:snore 3.6s ease-in-out infinite;filter:brightness(0.8);}
+  .anim-evolving .creature{animation:evolve 0.8s ease-in-out infinite;}
+  @keyframes bounce{0%,100%{transform:scaleY(1);}50%{transform:scaleY(1.05) scaleX(0.98);}}
+  @keyframes hop{0%,100%{transform:translateY(0) scaleY(1);}30%{transform:translateY(-14%) scaleY(1.06);}60%{transform:translateY(0) scaleY(0.94) scaleX(1.05);}}
+  @keyframes droop{0%,100%{transform:scaleY(0.96);}50%{transform:scaleY(0.92) skewX(-2deg);}}
+  @keyframes snore{0%,100%{transform:scaleY(0.9) scaleX(1.04);}50%{transform:scaleY(0.94) scaleX(1.02);}}
+  @keyframes evolve{0%,100%{transform:scale(1);}50%{transform:scale(1.12);filter:brightness(1.5);}}
+  .zzz{animation:zfloat 2.8s ease-in-out infinite;opacity:0;}
+  .zzz.z2{animation-delay:0.9s;} .zzz.z3{animation-delay:1.8s;}
+  @keyframes zfloat{0%{opacity:0;transform:translate(0,0);}25%{opacity:0.85;}70%{opacity:0;}100%{opacity:0;transform:translate(14px,-26px);}}
+  .sparkle{animation:spark 1.1s ease-in-out infinite;transform-origin:center;}
+  @keyframes spark{0%,100%{opacity:0;transform:scale(0.4) rotate(0deg);}50%{opacity:1;transform:scale(1) rotate(28deg);}}
+  .sweat{animation:sweatdrop 2.2s ease-in infinite;}
+  @keyframes sweatdrop{0%{opacity:0;transform:translateY(0);}25%{opacity:0.9;}90%{opacity:0;transform:translateY(16px);}100%{opacity:0;}}
+  .evo-ring{animation:ringburst 0.9s ease-out infinite;transform-origin:center;}
+  @keyframes ringburst{0%{opacity:0.9;transform:scale(0.5);}100%{opacity:0;transform:scale(1.7);}}
+  .food{animation:foodfall 0.9s ease-in forwards;}
+  @keyframes foodfall{0%{opacity:0;transform:translateY(-46px);}30%{opacity:1;}80%{opacity:1;transform:translateY(0);}100%{opacity:0;transform:translateY(2px) scale(0.6);}}
+
+  #topbar{position:absolute;top:0;left:0;right:0;z-index:1200;display:flex;align-items:center;justify-content:space-between;padding:calc(env(safe-area-inset-top, 0px) + 12px) 16px 12px;pointer-events:none;flex-wrap:wrap;gap:8px;}
+  #topbar > *{pointer-events:auto;}
+  #wordmark{font-family:var(--mono);font-weight:600;font-size:14px;letter-spacing:0.28em;}
+  #wordmark span{color:var(--growth);}
+  #subtitle{font-size:10.5px;color:var(--ink-dim);margin-top:2px;}
+  #datasource{display:inline-block;margin-left:6px;padding:1px 7px;border-radius:10px;border:1px solid var(--line);font-family:var(--mono);font-size:9px;letter-spacing:0.08em;}
+  #mode-switch{display:flex;background:var(--bg-panel);border:1px solid var(--line);border-radius:24px;padding:3px;backdrop-filter:blur(8px);}
+  .mode-btn{font-family:var(--mono);font-size:11px;letter-spacing:0.1em;color:var(--ink-dim);padding:7px 20px;border-radius:20px;cursor:pointer;border:none;background:transparent;transition:all 0.2s;}
+  .mode-btn.active{background:rgba(78,205,196,0.16);color:var(--growth);}
+  #dateread{font-family:var(--mono);font-size:16px;font-weight:500;background:var(--bg-panel);border:1px solid var(--line);padding:8px 15px;border-radius:3px;backdrop-filter:blur(8px);letter-spacing:0.05em;}
+
+  #infopanel{position:absolute;top:0;right:0;height:100%;width:min(340px, 100vw);z-index:1300;background:var(--bg-panel);
+    border-left:1px solid var(--line);backdrop-filter:blur(12px);padding:80px 24px 24px;
+    transform:translateX(100%);transition:transform 0.35s cubic-bezier(.2,.8,.2,1);overflow-y:auto;-webkit-overflow-scrolling:touch;}
+  #infopanel.open{transform:translateX(0);}
+  #infopanel .close{position:absolute;top:22px;right:20px;cursor:pointer;color:var(--ink-dim);font-size:19px;padding:8px;}
+  #infopanel .close:hover{color:var(--ink);}
+  #ip-ticker{font-family:var(--mono);font-size:11px;letter-spacing:0.14em;color:var(--ink-dim);}
+  #ip-name{font-size:22px;font-weight:700;margin:4px 0 2px;}
+  #ip-loc{font-size:12px;color:var(--ink-dim);margin-bottom:14px;}
+  #ip-state-line{display:flex;align-items:center;gap:8px;margin-bottom:14px;font-size:13px;}
+  #ip-state-emoji{font-size:20px;}
+  .stat-row{display:flex;justify-content:space-between;align-items:baseline;padding:9px 0;border-bottom:1px solid var(--line);}
+  .stat-label{font-size:11px;color:var(--ink-dim);}
+  .stat-val{font-family:var(--mono);font-size:13.5px;font-weight:500;}
+  #ip-adopt{width:100%;margin-top:16px;padding:12px;border-radius:8px;border:1px solid var(--growth);
+    background:rgba(78,205,196,0.1);color:var(--growth);font-family:var(--disp);font-size:13px;font-weight:500;cursor:pointer;}
+  #ip-adopt:hover{background:rgba(78,205,196,0.2);}
+  #ip-adopt.adopted{border-color:var(--decline);background:rgba(255,93,143,0.08);color:var(--decline);}
+  #ip-adopt:disabled{border-color:var(--line);color:var(--ink-dim);background:transparent;cursor:not-allowed;}
+  .ip-section{margin-top:18px;}
+  .ip-section h4{font-size:10px;font-family:var(--mono);letter-spacing:0.14em;color:var(--ink-dim);margin:0 0 8px;text-transform:uppercase;}
+  .diary-entry{font-size:11.5px;color:var(--ink-dim);line-height:1.6;padding:7px 0;border-bottom:1px dashed var(--line);}
+  .diary-entry b{color:var(--ink);font-weight:500;}
+  .hist-entry{display:flex;gap:10px;font-size:11.5px;padding:6px 0;border-bottom:1px dashed var(--line);}
+  .hist-year{font-family:var(--mono);color:var(--ink-dim);flex-shrink:0;width:42px;}
+  .hist-title{color:var(--ink);}
+  .hist-fx{font-size:13px;flex-shrink:0;}
+
+  #controls{position:absolute;bottom:0;left:0;right:0;z-index:1200;background:linear-gradient(0deg, rgba(6,9,17,0.95) 40%, rgba(6,9,17,0));padding:44px 16px calc(env(safe-area-inset-bottom, 0px) + 16px);}
+  #controlbar{max-width:1000px;margin:0 auto;display:flex;align-items:center;gap:14px;}
+  #playbtn{width:38px;height:38px;border-radius:50%;border:1px solid var(--line);background:rgba(255,255,255,0.04);color:var(--ink);cursor:pointer;display:flex;align-items:center;justify-content:center;font-size:13px;flex-shrink:0;}
+  #playbtn:hover{background:rgba(255,255,255,0.09);}
+  #slider-wrap{flex:1;}
+  #slider{-webkit-appearance:none;width:100%;height:3px;border-radius:2px;background:var(--line);outline:none;cursor:pointer;}
+  #slider::-webkit-slider-thumb{-webkit-appearance:none;width:22px;height:22px;border-radius:50%;background:var(--ink);border:2px solid var(--growth);cursor:pointer;box-shadow:0 0 8px rgba(78,205,196,0.6);}
+  #slider::-moz-range-thumb{width:18px;height:18px;border-radius:50%;background:var(--ink);border:2px solid var(--growth);cursor:pointer;}
+  #range-labels{display:flex;justify-content:space-between;font-family:var(--mono);font-size:10px;color:var(--ink-dim);margin-top:5px;}
+  #speedwrap{font-family:var(--mono);font-size:10px;color:var(--ink-dim);display:flex;align-items:center;gap:6px;}
+  #speed{background:rgba(255,255,255,0.04);border:1px solid var(--line);color:var(--ink);font-family:var(--mono);font-size:10px;border-radius:3px;padding:4px 6px;}
+
+  .map-creature{cursor:pointer;}
+  .map-label{position:absolute;top:100%;left:50%;transform:translateX(-50%);margin-top:2px;font-family:var(--mono);font-size:9px;color:var(--ink-dim);white-space:nowrap;letter-spacing:0.06em;}
+  .adopt-star{position:absolute;top:-2px;right:-2px;font-size:11px;}
+  .tomb{display:flex;flex-direction:column;align-items:center;cursor:pointer;opacity:0.85;}
+  .tomb .years{font-family:var(--mono);font-size:8.5px;color:var(--ink-dim);white-space:nowrap;margin-top:1px;}
+
+  #loaderror{position:absolute;inset:0;z-index:2000;display:none;align-items:center;justify-content:center;background:var(--bg-deep);color:var(--ink-dim);font-size:13px;text-align:center;line-height:2;padding:24px;}
+  #loaderror.show{display:flex;}
+
+  @media (max-width:640px){
+    #wordmark{font-size:12px;letter-spacing:0.18em;}
+    #dateread{font-size:13px;padding:6px 10px;}
+    .mode-btn{padding:6px 12px;font-size:10px;}
+    #garden-pens{gap:2vw;}
+    .pen{width:150px;}
+  }
+</style>
+</head>
+<body>
+<div id="app">
+  <div id="map"></div>
+  <div id="garden">
+    <div id="garden-sky"></div>
+    <div id="garden-ground"></div>
+    <div id="garden-title"><h2>MY GARDEN</h2><p>迎えた企業たちが，ここで暮らしている</p></div>
+    <div id="garden-pens"></div>
+    <div id="garden-empty">まだ誰もいない．<br>地図で企業をタップして「庭に迎える」を押すと，ここに住みはじめる．</div>
+  </div>
+
+  <div id="topbar">
+    <div>
+      <div id="wordmark">GROWTH<span>·</span>ATLAS</div>
+      <div id="subtitle">実株価データ<span id="datasource">loading…</span></div>
+    </div>
+    <div id="mode-switch">
+      <button class="mode-btn active" data-mode="map">🌍 世界地図</button>
+      <button class="mode-btn" data-mode="garden">🌱 じぶんの庭</button>
+    </div>
+    <div id="dateread">–</div>
+  </div>
+
+  <div id="infopanel">
+    <div class="close" id="ip-close">✕</div>
+    <div id="ip-ticker">–</div>
+    <div id="ip-name">–</div>
+    <div id="ip-loc">–</div>
+    <div id="ip-state-line"><span id="ip-state-emoji">–</span><span id="ip-state-text">–</span></div>
+    <div id="ip-stats">
+      <div class="stat-row"><span class="stat-label">株価指数（期首=100）</span><span class="stat-val" id="ip-price">–</span></div>
+      <div class="stat-row"><span class="stat-label">前日比</span><span class="stat-val" id="ip-daily">–</span></div>
+      <div class="stat-row"><span class="stat-label">期間内累積成長率</span><span class="stat-val" id="ip-cum">–</span></div>
+      <div class="stat-row"><span class="stat-label">20日ボラティリティ</span><span class="stat-val" id="ip-vol">–</span></div>
+      <div class="stat-row"><span class="stat-label">出来高（食欲）</span><span class="stat-val" id="ip-volu">–</span></div>
+      <div class="stat-row"><span class="stat-label">進化段階</span><span class="stat-val" id="ip-stage">–</span></div>
+    </div>
+    <button id="ip-adopt">🌱 庭に迎える</button>
+    <div class="ip-section" id="ip-diary-sec"><h4>観察日記（直近5日）</h4><div id="ip-diary-list"></div></div>
+    <div class="ip-section"><h4>あゆみ</h4><div id="ip-history-list"></div></div>
+  </div>
+
+  <div id="controls">
+    <div id="controlbar">
+      <div id="playbtn">▶</div>
+      <div id="slider-wrap">
+        <input type="range" id="slider" min="0" max="1" value="1" step="1">
+        <div id="range-labels"><span id="date-start">–</span><span id="date-end">–</span></div>
+      </div>
+      <div id="speedwrap">速度
+        <select id="speed"><option value="220">遅い</option><option value="90" selected>普通</option><option value="35">速い</option></select>
+      </div>
+    </div>
+  </div>
+
+  <div id="loaderror">データバンドルの読み込みに失敗しました．<br>dist/atlas_bundle.json が配置されているか確認してください．</div>
+</div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js"></script>
+<script>
+/* =========================================================
+   1. データ読み込み — dist/atlas_bundle.json（実データ）
+   ========================================================= */
+async function loadBundle(){
+  const res = await fetch('dist/atlas_bundle.json', {cache:'no-cache'});
+  if(!res.ok) throw new Error('bundle fetch failed: '+res.status);
+  const b = await res.json();
+  document.getElementById('datasource').textContent =
+    (b.source||'dist/atlas_bundle.json') + ' · ' + (b.generated_at||'').slice(0,10) + ' 更新';
+  return b;
+}
+
+/* series タプルの列順（build_bundle.py と同期） */
+const COL = {price:0, daily_return:1, deviation:2, vol20:3, cum_return:4, trend_slope:5, stage:6, volume_norm:7, state_code:8};
+const STATES = [
+  {key:'healthy', label:'元気',   emoji:'😊', color:'var(--growth)',  animClass:'anim-healthy'},
+  {key:'excited', label:'興奮',   emoji:'🤩', color:'var(--neutral)', animClass:'anim-excited'},
+  {key:'sick',    label:'不調',   emoji:'🤒', color:'var(--decline)', animClass:'anim-sick'},
+  {key:'sleeping',label:'睡眠',   emoji:'😴', color:'var(--sleep)',   animClass:'anim-sleeping'},
+  {key:'evolving',label:'進化中', emoji:'✨', color:'var(--growth)',  animClass:'anim-evolving'},
+];
+const FX_ICON = {birth:'🐣', evolve:'✨', damage:'🤕', death:'🪦', transform:'🦋', none:'📌'};
+const PALETTE = ['#4ECDC4','#6ee7b7','#f9a8d4','#93c5fd','#fcd34d','#c4b5fd','#fda4af','#86efac','#7dd3fc','#fde68a','#a5b4fc','#f0abfc','#99f6e4'];
+
+let BUNDLE=null, ALIVE=[], TOMBS=[], DATES=[], N_DAYS=0;
+
+function getP(c, i){
+  const s = c.series[i];
+  return {price:s[COL.price], dailyReturn:s[COL.daily_return], deviation:s[COL.deviation],
+          vol20:s[COL.vol20], cumReturn:s[COL.cum_return], trendSlope:s[COL.trend_slope],
+          stage:s[COL.stage], volumeNorm:s[COL.volume_norm], state:STATES[s[COL.state_code]],
+          volume: s[COL.volume_norm]*30_000_000};
+}
+
+/* =========================================================
+   2. キャラクターSVG
+   ========================================================= */
+function creatureSVG(state, hue, size, stage, opts={}){
+  const s=size, bodyW=s*0.82, bodyH=s*0.66, cx=s/2, groundY=s*0.92, bodyCy=groundY-bodyH/2;
+  let eyes='',mouth='',extras='';
+  const eyeY=bodyCy-bodyH*0.08, eyeDx=bodyW*0.18, eyeR=Math.max(2.2,s*0.045);
+  switch(state.key){
+    case 'sleeping':
+      eyes=`<path d="M ${cx-eyeDx-eyeR} ${eyeY} q ${eyeR} ${eyeR*0.9} ${eyeR*2} 0" stroke="#1a2238" stroke-width="${s*0.02}" fill="none" stroke-linecap="round"/><path d="M ${cx+eyeDx-eyeR} ${eyeY} q ${eyeR} ${eyeR*0.9} ${eyeR*2} 0" stroke="#1a2238" stroke-width="${s*0.02}" fill="none" stroke-linecap="round"/>`;
+      mouth=`<ellipse cx="${cx}" cy="${bodyCy+bodyH*0.16}" rx="${s*0.035}" ry="${s*0.045}" fill="#1a2238" opacity="0.7"/>`;
+      extras=`<text class="zzz" x="${cx+bodyW*0.42}" y="${bodyCy-bodyH*0.5}" font-size="${s*0.13}" fill="#cdd8ff">z</text><text class="zzz z2" x="${cx+bodyW*0.52}" y="${bodyCy-bodyH*0.62}" font-size="${s*0.1}" fill="#cdd8ff">z</text><text class="zzz z3" x="${cx+bodyW*0.6}" y="${bodyCy-bodyH*0.72}" font-size="${s*0.08}" fill="#cdd8ff">z</text>`;
+      break;
+    case 'sick':
+      eyes=`<line x1="${cx-eyeDx-eyeR}" y1="${eyeY-eyeR*0.6}" x2="${cx-eyeDx+eyeR}" y2="${eyeY+eyeR*0.6}" stroke="#1a2238" stroke-width="${s*0.02}" stroke-linecap="round"/><line x1="${cx-eyeDx-eyeR}" y1="${eyeY+eyeR*0.6}" x2="${cx-eyeDx+eyeR}" y2="${eyeY-eyeR*0.6}" stroke="#1a2238" stroke-width="${s*0.02}" stroke-linecap="round"/><circle cx="${cx+eyeDx}" cy="${eyeY}" r="${eyeR*0.75}" fill="#1a2238"/>`;
+      mouth=`<path d="M ${cx-s*0.06} ${bodyCy+bodyH*0.2} q ${s*0.06} ${-s*0.05} ${s*0.12} 0" stroke="#1a2238" stroke-width="${s*0.022}" fill="none" stroke-linecap="round"/>`;
+      extras=`<path class="sweat" d="M ${cx-bodyW*0.42} ${bodyCy-bodyH*0.28} q ${-s*0.03} ${s*0.05} 0 ${s*0.08} q ${s*0.03} ${-s*0.03} 0 ${-s*0.08}" fill="#9fd8ff"/>`;
+      break;
+    case 'excited':
+      eyes=`<path d="M ${cx-eyeDx-eyeR} ${eyeY+eyeR*0.4} l ${eyeR} ${-eyeR} l ${eyeR} ${eyeR}" stroke="#1a2238" stroke-width="${s*0.022}" fill="none" stroke-linecap="round" stroke-linejoin="round"/><path d="M ${cx+eyeDx-eyeR} ${eyeY+eyeR*0.4} l ${eyeR} ${-eyeR} l ${eyeR} ${eyeR}" stroke="#1a2238" stroke-width="${s*0.022}" fill="none" stroke-linecap="round" stroke-linejoin="round"/>`;
+      mouth=`<path d="M ${cx-s*0.07} ${bodyCy+bodyH*0.14} q ${s*0.07} ${s*0.09} ${s*0.14} 0 z" fill="#1a2238"/>`;
+      extras=`<path class="sparkle" d="M ${cx+bodyW*0.5} ${bodyCy-bodyH*0.55} l ${s*0.02} ${s*0.05} l ${s*0.05} ${s*0.02} l ${-s*0.05} ${s*0.02} l ${-s*0.02} ${s*0.05} l ${-s*0.02} ${-s*0.05} l ${-s*0.05} ${-s*0.02} l ${s*0.05} ${-s*0.02} z" fill="#fff3b0"/><path class="sparkle" style="animation-delay:0.5s" d="M ${cx-bodyW*0.55} ${bodyCy-bodyH*0.4} l ${s*0.015} ${s*0.04} l ${s*0.04} ${s*0.015} l ${-s*0.04} ${s*0.015} l ${-s*0.015} ${s*0.04} l ${-s*0.015} ${-s*0.04} l ${-s*0.04} ${-s*0.015} l ${s*0.04} ${-s*0.015} z" fill="#fff3b0"/>`;
+      break;
+    case 'evolving':
+      eyes=`<circle cx="${cx-eyeDx}" cy="${eyeY}" r="${eyeR}" fill="#fff"/><circle cx="${cx+eyeDx}" cy="${eyeY}" r="${eyeR}" fill="#fff"/>`;
+      mouth=`<path d="M ${cx-s*0.07} ${bodyCy+bodyH*0.14} q ${s*0.07} ${s*0.09} ${s*0.14} 0 z" fill="#fff"/>`;
+      extras=`<circle class="evo-ring" cx="${cx}" cy="${bodyCy}" r="${bodyW*0.55}" fill="none" stroke="${hue}" stroke-width="${s*0.02}"/><circle class="evo-ring" style="animation-delay:0.45s" cx="${cx}" cy="${bodyCy}" r="${bodyW*0.55}" fill="none" stroke="#fff" stroke-width="${s*0.012}"/>`;
+      break;
+    default:
+      eyes=`<circle cx="${cx-eyeDx}" cy="${eyeY}" r="${eyeR*0.8}" fill="#1a2238"/><circle cx="${cx+eyeDx}" cy="${eyeY}" r="${eyeR*0.8}" fill="#1a2238"/><circle cx="${cx-eyeDx+eyeR*0.3}" cy="${eyeY-eyeR*0.3}" r="${eyeR*0.25}" fill="#fff"/><circle cx="${cx+eyeDx+eyeR*0.3}" cy="${eyeY-eyeR*0.3}" r="${eyeR*0.25}" fill="#fff"/>`;
+      mouth=`<path d="M ${cx-s*0.05} ${bodyCy+bodyH*0.15} q ${s*0.05} ${s*0.05} ${s*0.1} 0" stroke="#1a2238" stroke-width="${s*0.022}" fill="none" stroke-linecap="round"/>`;
+  }
+  let spikes='';
+  for(let k=0;k<stage;k++){
+    const sx=cx+(k-(stage-1)/2)*bodyW*0.22, topY=bodyCy-bodyH/2;
+    spikes+=`<path d="M ${sx-s*0.035} ${topY+s*0.02} q ${s*0.035} ${-s*0.09} ${s*0.07} 0 z" fill="${hue}" opacity="0.85" stroke="rgba(255,255,255,0.25)" stroke-width="1"/>`;
+  }
+  const food=opts.feeding?`<circle class="food" cx="${cx}" cy="${bodyCy-bodyH*0.65}" r="${s*0.04}" fill="#ffd27f"/>`:'';
+  return `<svg class="creature" width="${s}" height="${s}" viewBox="0 0 ${s} ${s}" xmlns="http://www.w3.org/2000/svg">
+    <ellipse cx="${cx}" cy="${groundY}" rx="${bodyW*0.55}" ry="${s*0.04}" fill="rgba(0,0,0,0.35)"/>
+    ${spikes}
+    <ellipse cx="${cx}" cy="${bodyCy}" rx="${bodyW/2}" ry="${bodyH/2}" fill="url(#grad-${opts.gid})" stroke="rgba(255,255,255,0.18)" stroke-width="1.2"/>
+    <defs><radialGradient id="grad-${opts.gid}" cx="0.35" cy="0.3" r="1">
+      <stop offset="0%" stop-color="${hue}" stop-opacity="1"/><stop offset="70%" stop-color="${hue}" stop-opacity="0.75"/><stop offset="100%" stop-color="${hue}" stop-opacity="0.45"/>
+    </radialGradient></defs>
+    ${eyes}${mouth}${extras}${food}</svg>`;
+}
+function tombSVG(size){
+  const s=size;
+  return `<svg width="${s}" height="${s}" viewBox="0 0 40 40" xmlns="http://www.w3.org/2000/svg">
+    <ellipse cx="20" cy="36" rx="13" ry="2.5" fill="rgba(0,0,0,0.4)"/>
+    <path d="M 11 36 L 11 18 Q 11 8 20 8 Q 29 8 29 18 L 29 36 Z" fill="#5b6478" stroke="rgba(255,255,255,0.2)" stroke-width="1"/>
+    <line x1="20" y1="15" x2="20" y2="25" stroke="#2c3247" stroke-width="2.4" stroke-linecap="round"/>
+    <line x1="15.5" y1="19" x2="24.5" y2="19" stroke="#2c3247" stroke-width="2.4" stroke-linecap="round"/>
+  </svg>`;
+}
+function sizeFromCumReturn(cum, base){
+  return base*(0.65+((Math.tanh(cum*1.4)+1)/2)*0.7);
+}
+
+/* =========================================================
+   3. 永続化 (localStorage)
+   ========================================================= */
+let adopted=['aapl','nvda'];
+function loadAdopted(){
+  try{ const r=localStorage.getItem('growth-atlas-adopted'); if(r)adopted=JSON.parse(r);}catch(e){}
+}
+function saveAdopted(){ try{ localStorage.setItem('growth-atlas-adopted',JSON.stringify(adopted)); }catch(e){} }
+
+/* =========================================================
+   4. 地図・状態
+   ========================================================= */
+const map=L.map('map',{zoomControl:false,worldCopyJump:true}).setView([25,20],2);
+L.control.zoom({position:'bottomright'}).addTo(map);
+L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png',{attribution:'&copy; OpenStreetMap &copy; CARTO',subdomains:'abcd',maxZoom:19}).addTo(map);
+const markers={};
+let selectedId=null, mode='map', lastDay=0, gid=0;
+const slider=document.getElementById('slider');
+const dateread=document.getElementById('dateread');
+const fmtVol=v=>(v/1_000_000).toFixed(1)+'M';
+
+function diaryLine(c,i){
+  const p=getP(c,i), st=p.state, pct=(p.dailyReturn*100).toFixed(1);
+  switch(st.key){
+    case 'evolving':return `<b>進化した！</b> トレンドが一段強くなり，からだに新しい輪が生まれた．`;
+    case 'excited':return `そわそわと落ち着かない（${pct}%）．値動きが激しく，跳ねまわっている．`;
+    case 'sick':return `元気がない（${pct}%）．平均を大きく割り込んで，うずくまっている．`;
+    case 'sleeping':return `出来高が薄く，静かに眠っている．`;
+    default:return p.dailyReturn>=0?`きげんよく餌を食べた（+${pct}%）．すこし大きくなった気がする．`:`小さくつまずいた（${pct}%）が，元気はある．`;
+  }
+}
+function speechLine(st,p){
+  switch(st.key){
+    case 'evolving':return '✨ 進化した！';
+    case 'excited':return 'そわそわ…！';
+    case 'sick':return 'ぐったり…';
+    case 'sleeping':return 'すやすや';
+    default:return p.dailyReturn>=0?'もぐもぐ':'まあまあかな';
+  }
+}
+
+function renderMap(dayIdx){
+  ALIVE.forEach(c=>{
+    const p=getP(c,dayIdx), st=p.state;
+    const size=sizeFromCumReturn(p.cumReturn,74);
+    const star=adopted.includes(c.id)?`<div class="adopt-star">⭐</div>`:'';
+    const html=`<div class="map-creature ${st.animClass}" style="position:relative;width:${size}px;height:${size}px;">${creatureSVG(st,c.hue,size,p.stage,{gid:`m${c.id}${gid}`})}${star}<div class="map-label">${c.ticker}</div></div>`;
+    markers[c.id].setIcon(L.divIcon({className:'',html,iconSize:[size,size+14],iconAnchor:[size/2,size]}));
+  });
+  TOMBS.forEach(c=>{
+    const html=`<div class="tomb">${tombSVG(34)}<div class="years">${c.founded_year}–${c.defunct_year}</div><div class="map-label" style="position:static;transform:none;">${c.ticker}</div></div>`;
+    markers[c.id].setIcon(L.divIcon({className:'',html,iconSize:[60,58],iconAnchor:[30,44]}));
+  });
+}
+
+const pensEl=document.getElementById('garden-pens');
+const emptyEl=document.getElementById('garden-empty');
+function renderGarden(dayIdx,feeding=false){
+  const residents=ALIVE.filter(c=>adopted.includes(c.id));
+  emptyEl.classList.toggle('show',residents.length===0);
+  pensEl.innerHTML='';
+  residents.forEach(c=>{
+    const p=getP(c,dayIdx), st=p.state;
+    const size=sizeFromCumReturn(p.cumReturn,180);
+    const pen=document.createElement('div');
+    pen.className='pen';
+    pen.innerHTML=`<div class="speech">${speechLine(st,p)}</div>
+      <div class="creature-holder ${st.animClass}">${creatureSVG(st,c.hue,size,p.stage,{gid:`g${c.id}${gid}`,feeding:feeding&&st.key!=='sleeping'})}</div>
+      <div class="nameplate"><span class="mood-dot" style="background:${st.color};"></span>${c.ticker} · ${st.label}</div>`;
+    pen.addEventListener('click',()=>openInfoPanel(c.id));
+    pensEl.appendChild(pen);
+    if(Math.random()<0.35||feeding){
+      const sp=pen.querySelector('.speech');
+      sp.classList.add('show');setTimeout(()=>sp.classList.remove('show'),2200);
+    }
+  });
+}
+
+function render(dayIdx,feeding=false){
+  gid++;
+  dateread.textContent=DATES[dayIdx];
+  const pct=(dayIdx/(N_DAYS-1))*100;
+  slider.style.background=`linear-gradient(90deg, var(--growth) ${pct}%, var(--line) ${pct}%)`;
+  if(mode==='map')renderMap(dayIdx);else renderGarden(dayIdx,feeding);
+  if(selectedId)updateInfoPanel(selectedId,dayIdx);
+  lastDay=dayIdx;
+}
+slider.addEventListener('input',()=>{const v=parseInt(slider.value,10);render(v,v===lastDay+1);});
+
+document.querySelectorAll('.mode-btn').forEach(btn=>{
+  btn.addEventListener('click',()=>{
+    document.querySelectorAll('.mode-btn').forEach(b=>b.classList.remove('active'));
+    btn.classList.add('active');
+    mode=btn.dataset.mode;
+    document.getElementById('garden').classList.toggle('active',mode==='garden');
+    document.getElementById('map').style.visibility=mode==='map'?'visible':'hidden';
+    render(parseInt(slider.value,10));
+  });
+});
+
+{
+  const sky=document.getElementById('garden-sky');
+  for(let i=0;i<60;i++){const s=document.createElement('div');s.className='star';s.style.left=Math.random()*100+'%';s.style.top=Math.random()*55+'%';s.style.animationDelay=(Math.random()*3)+'s';sky.appendChild(s);}
+  const ground=document.getElementById('garden-ground');
+  for(let i=0;i<40;i++){const g=document.createElement('div');g.className='grass';g.style.left=Math.random()*100+'%';g.style.height=(8+Math.random()*18)+'px';ground.appendChild(g);}
+}
+
+/* =========================================================
+   5. インフォパネル
+   ========================================================= */
+const infopanel=document.getElementById('infopanel');
+const adoptBtn=document.getElementById('ip-adopt');
+document.getElementById('ip-close').addEventListener('click',()=>{infopanel.classList.remove('open');selectedId=null;});
+function openInfoPanel(id){selectedId=id;infopanel.classList.add('open');updateInfoPanel(id,parseInt(slider.value,10));}
+
+function updateInfoPanel(id,dayIdx){
+  const c=BUNDLE.companies.find(x=>x.id===id);
+  const isTomb=!c.series;
+  document.getElementById('ip-ticker').textContent=c.ticker;
+  document.getElementById('ip-name').textContent=c.name_ja||c.name;
+  document.getElementById('ip-loc').textContent=`${c.sector||''} · ${c.founded_year??'?'}年生まれ${c.defunct_year?` · ${c.defunct_year}年没`:''}`;
+
+  const statsEl=document.getElementById('ip-stats');
+  const diarySec=document.getElementById('ip-diary-sec');
+  if(isTomb){
+    document.getElementById('ip-state-emoji').textContent='🪦';
+    const t=document.getElementById('ip-state-text');
+    t.textContent='歴史のなかで眠っている';t.style.color='var(--ink-dim)';
+    statsEl.style.display='none';diarySec.style.display='none';
+    adoptBtn.disabled=true;adoptBtn.textContent='（この企業はもういない）';
+  }else{
+    statsEl.style.display='';diarySec.style.display='';adoptBtn.disabled=false;
+    const p=getP(c,dayIdx), st=p.state;
+    document.getElementById('ip-state-emoji').textContent=st.emoji;
+    const t=document.getElementById('ip-state-text');t.textContent=st.label;t.style.color=st.color;
+    document.getElementById('ip-price').textContent=p.price.toFixed(2);
+    const de=document.getElementById('ip-daily');
+    de.textContent=(p.dailyReturn>=0?'+':'')+(p.dailyReturn*100).toFixed(2)+'%';
+    de.style.color=p.dailyReturn>=0?'var(--growth)':'var(--decline)';
+    const ce=document.getElementById('ip-cum');
+    ce.textContent=(p.cumReturn>=0?'+':'')+(p.cumReturn*100).toFixed(1)+'%';
+    ce.style.color=p.cumReturn>=0?'var(--growth)':'var(--decline)';
+    document.getElementById('ip-vol').textContent=(p.vol20*100).toFixed(2)+'%';
+    document.getElementById('ip-volu').textContent=fmtVol(p.volume);
+    document.getElementById('ip-stage').textContent='★'.repeat(p.stage)+'☆'.repeat(3-p.stage);
+    const isAdopted=adopted.includes(id);
+    adoptBtn.textContent=isAdopted?'💔 庭から見送る':'🌱 庭に迎える';
+    adoptBtn.classList.toggle('adopted',isAdopted);
+    const list=document.getElementById('ip-diary-list');
+    list.innerHTML='';
+    for(let d=dayIdx;d>Math.max(0,dayIdx-5);d--){
+      const div=document.createElement('div');div.className='diary-entry';
+      div.innerHTML=`<b>${DATES[d]}</b> — ${diaryLine(c,d)}`;list.appendChild(div);
+    }
+  }
+  const hl=document.getElementById('ip-history-list');
+  hl.innerHTML='';
+  (c.history_events||[]).forEach(e=>{
+    const div=document.createElement('div');div.className='hist-entry';
+    div.innerHTML=`<span class="hist-year">${e.year}</span><span class="hist-fx">${FX_ICON[e.effect]||'📌'}</span><span class="hist-title">${e.title}</span>`;
+    hl.appendChild(div);
+  });
+}
+adoptBtn.addEventListener('click',()=>{
+  if(!selectedId||adoptBtn.disabled)return;
+  if(adopted.includes(selectedId))adopted=adopted.filter(x=>x!==selectedId);
+  else adopted.push(selectedId);
+  saveAdopted();render(parseInt(slider.value,10));
+});
+
+/* =========================================================
+   6. 再生
+   ========================================================= */
+const playbtn=document.getElementById('playbtn');
+const speedSel=document.getElementById('speed');
+let playing=false,timer=null;
+function tick(){let v=parseInt(slider.value,10)+1;if(v>N_DAYS-1){stopPlay();return;}slider.value=v;render(v,true);}
+function startPlay(){playing=true;playbtn.textContent='❚❚';timer=setInterval(tick,parseInt(speedSel.value,10));}
+function stopPlay(){playing=false;playbtn.textContent='▶';clearInterval(timer);}
+playbtn.addEventListener('click',()=>playing?stopPlay():startPlay());
+speedSel.addEventListener('change',()=>{if(playing){stopPlay();startPlay();}});
+
+/* =========================================================
+   7. 起動
+   ========================================================= */
+(async function init(){
+  try{
+    BUNDLE=await loadBundle();
+  }catch(e){
+    document.getElementById('loaderror').classList.add('show');
+    document.getElementById('datasource').textContent='load error';
+    return;
+  }
+  DATES=BUNDLE.dates;N_DAYS=DATES.length;
+  ALIVE=BUNDLE.companies.filter(c=>c.series);
+  TOMBS=BUNDLE.companies.filter(c=>!c.series);
+  ALIVE.forEach((c,i)=>c.hue=PALETTE[i%PALETTE.length]);
+  BUNDLE.companies.forEach(c=>{
+    const m=L.marker([c.hq_lat,c.hq_lng],{icon:L.divIcon({className:'',html:'',iconSize:[0,0]})}).addTo(map);
+    m.on('click',()=>openInfoPanel(c.id));
+    markers[c.id]=m;
+  });
+  slider.max=N_DAYS-1;slider.value=N_DAYS-1;
+  document.getElementById('date-start').textContent=DATES[0];
+  document.getElementById('date-end').textContent=DATES[N_DAYS-1];
+  loadAdopted();
+  render(N_DAYS-1);
+})();
+</script>
+</body>
+</html>

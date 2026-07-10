@@ -1,0 +1,50 @@
+name: Update stock bundle & deploy
+
+on:
+  schedule:
+    - cron: "30 22 * * 1-5"   # 平日 UTC22:30 = JST 7:30（NY市場クローズ後）
+  workflow_dispatch:
+  push:
+    branches: [main]
+
+permissions:
+  contents: write
+  pages: write
+  id-token: write
+
+concurrency:
+  group: pages
+  cancel-in-progress: false
+
+jobs:
+  build-deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install deps
+        run: pip install -r pipeline/requirements.txt
+
+      - name: Build bundle from yfinance
+        run: python pipeline/build_bundle.py
+
+      - name: Commit updated bundle
+        run: |
+          git config user.name "atlas-bot"
+          git config user.email "actions@github.com"
+          git add dist/atlas_bundle.json
+          git diff --cached --quiet || git commit -m "chore: daily bundle update"
+          git push
+
+      - name: Upload Pages artifact
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: .
+
+      - name: Deploy to GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v4
